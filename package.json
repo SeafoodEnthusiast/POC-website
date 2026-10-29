@@ -5,7 +5,6 @@
   "description": "1:1 iOS SwiftUI Mobile-Simulator Web App for Glaucoma Screening Research with Client-Side ONNX Runtime Web Inference",
   "scripts": {
     "start": "python3 -m http.server 3000",
-    "dev": "python3 -m http.server 3000",
-    "build": "echo 'Static build ready for Vercel'"
+    "dev": "python3 -m http.server 3000"
   }
 }
