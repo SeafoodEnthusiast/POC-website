@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#F2F2F7" />
+  <title>GlaucoScan POC — AI Glaucoma Screening</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <!-- ONNX Runtime Web for 100% Client-Side Serverless Inference on Vercel -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+</head>
+<body>
+  <div class="workspace-shell">
+    <!-- Left / Floating Clinical Presenter Controls (Visible on Desktop, Collapsible on Mobile) -->
+    <aside class="presenter-panel" id="presenterPanel">
+      <div class="presenter-brand">
+        <div class="brand-badge">iOS POC · 1:1 Web Simulator</div>
+        <h1>GlaucoScan Research</h1>
+        <p class="presenter-subtitle">
+          Optic Disc &amp; Optic Cup Semantic Segmentation for Vertical Cup-to-Disc Ratio (vCDR) Screening.
+        </p>
+      </div>
+
+      <!-- AI Model Status Card -->
+      <div class="presenter-card">
+        <div class="presenter-card-header">
+          <span class="presenter-label">AI INFERENCE ENGINE (VERCEL ONNX)</span>
+          <span class="engine-badge" id="engineStatusBadge">Loading...</span>
+        </div>
+        <div class="engine-meta" id="engineStatusText">
+          Initializing GlaucomaSegmentation.onnx (ResNet34 U-Net · 512×512)...
+        </div>
+        <div class="engine-progress-wrap" id="engineProgressWrap">
+          <div class="engine-progress-bar" id="engineProgressBar" style="width: 15%"></div>
+        </div>
+      </div>
+
+      <!-- Quick Actions for Doctor Demo -->
+      <div class="presenter-card">
+        <span class="presenter-label">CLINICAL DEMO SHORTCUTS</span>
+        <button class="presenter-btn presenter-btn-primary" id="btnQuickDemoReport" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Instant Demo: Analyze Sample OD &amp; OS
+        </button>
+        <p class="presenter-hint">
+          Loads <code>RET018OS.jpg</code> (Left Eye) &amp; <code>RET018OD.jpg</code> (Right Eye), runs segmentation, and opens the Report Overview.
+        </p>
+
+        <div class="presenter-divider"></div>
+
+        <div class="nfc-toggle-row">
+          <div>
+            <div class="nfc-toggle-title">NTAG213 Lens Frame (NFC)</div>
+            <div class="nfc-toggle-sub">Required to unlock Camera in Onboarding</div>
+          </div>
+          <label class="ios-switch">
+            <input type="checkbox" id="nfcFrameToggle" checked />
+            <span class="ios-switch-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Navigation Stage Switcher -->
+      <div class="presenter-card">
+        <span class="presenter-label">SCREEN NAVIGATION</span>
+        <div class="stage-pills">
+          <button class="stage-pill active" data-goto="onboarding" type="button">1. Onboarding</button>
+          <button class="stage-pill" data-goto="scan" type="button">2. Eye Scan</button>
+          <button class="stage-pill" data-goto="report" type="button">3. Report</button>
+        </div>
+      </div>
+
+      <!-- Color Legend -->
+      <div class="presenter-card presenter-legend">
+        <span class="presenter-label">SEGMENTATION &amp; RISK CUT-OFFS</span>
+        <div class="legend-grid">
+          <div class="legend-item">
+            <span class="legend-line" style="background: rgb(45, 220, 135)"></span>
+            <span>Optic Disc Boundary (Class 1)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line" style="background: rgb(255, 75, 85)"></span>
+            <span>Optic Cup Boundary (Class 2)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background: #21945C"></span>
+            <span>Normal: vCDR &lt; 0.50</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background: #CC780D"></span>
+            <span>Glaucoma Suspect: 0.50 – 0.69</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background: #D63333"></span>
+            <span>High Risk: vCDR ≥ 0.70</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: 1:1 iPhone SwiftUI Simulator -->
+    <main class="simulator-stage">
+      <!-- Mobile-only Quick Demo Banner -->
+      <div class="mobile-quickbar">
+        <span class="mobile-quickbar-label">Clinical Demo:</span>
+        <button type="button" class="mobile-quickbar-btn" id="btnMobileQuickDemo">
+          Load Sample OD + OS Report
+        </button>
+      </div>
+
+      <div class="iphone-frame">
+        <!-- iPhone Hardware Buttons (Desktop decoration) -->
+        <div class="hw-btn hw-silent"></div>
+        <div class="hw-btn hw-vol-up"></div>
+        <div class="hw-btn hw-vol-down"></div>
+        <div class="hw-btn hw-power"></div>
+
+        <div class="iphone-screen">
+          <!-- iOS Status Bar + Dynamic Island -->
+          <header class="ios-status-bar">
+            <span class="ios-time" id="iosClock">9:41</span>
+            <div class="dynamic-island">
+              <div class="di-camera"></div>
+            </div>
+            <div class="ios-status-icons" aria-hidden="true">
+              <!-- Cellular -->
+              <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor">
+                <rect x="0" y="7" width="3" height="4" rx="1"/>
+                <rect x="4.5" y="5" width="3" height="6" rx="1"/>
+                <rect x="9" y="2.5" width="3" height="8.5" rx="1"/>
+                <rect x="13.5" y="0" width="3" height="11" rx="1"/>
+              </svg>
+              <!-- Wi-Fi -->
+              <svg width="15" height="11" viewBox="0 0 16 12" fill="currentColor">
+                <path d="M8 9.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm-3.6-2.1a5.2 5.2 0 0 1 7.2 0l1.2-1.2a6.9 6.9 0 0 0-9.6 0l1.2 1.2zm-2.6-2.6a9 9 0 0 1 12.4 0l1.2-1.2a10.7 10.7 0 0 0-14.8 0l1.2 1.2z"/>
+              </svg>
+              <!-- Battery -->
+              <svg width="24" height="11" viewBox="0 0 25 12" fill="none">
+                <rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" stroke-opacity="0.35"/>
+                <rect x="2" y="2" width="18" height="8" rx="1.5" fill="currentColor"/>
+                <path d="M23 4v4a2 2 0 0 0 0-4z" fill="currentColor" fill-opacity="0.4"/>
+              </svg>
+            </div>
+          </header>
+
+          <!-- ============================================================
+               VIEW 1: ONBOARDING VIEW (OnboardingView.swift)
+               ============================================================ -->
+          <section class="app-view active" id="viewOnboarding">
+            <div class="onboarding-container">
+              <div class="onboarding-spacer-top"></div>
+
+              <div class="onboarding-icon-circle" id="onboardingIconCircle">
+                <!-- Camera Icon (Default Step 0) -->
+                <svg id="iconOnboardingCamera" width="72" height="72" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9.4 4.5a2 2 0 0 0-1.7.95L6.5 7H4a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h16a3 3 0 0 0 3-3v-8a3 3 0 0 0-3-3h-2.5l-1.2-1.55a2 2 0 0 0-1.7-.95H9.4zM12 17.5a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/>
+                </svg>
+                <!-- Photos Icon (Step 1) -->
+                <svg id="iconOnboardingPhotos" class="hidden" width="72" height="72" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M4 5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4zm4.5 4.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm-2.5 7 3.5-4.5 2.5 3 3.5-4.5 4.5 6H6z"/>
+                </svg>
+              </div>
+
+              <div class="onboarding-gap"></div>
+
+              <h2 class="onboarding-title" id="onboardingTitle">Enable Camera</h2>
+              <p class="onboarding-message" id="onboardingMessage">
+                Please provide us access to your camera, which is required to capture eye images for screening.
+              </p>
+
+              <!-- Subtle NFC Frame Status Pill -->
+              <button type="button" class="nfc-status-pill" id="btnSimulateNfcTap">
+                <span class="nfc-dot" id="nfcDot"></span>
+                <span id="nfcStatusLabel">NTAG213 Frame Attached</span>
+              </button>
+
+              <div class="onboarding-spacer-bottom"></div>
+
+              <div class="onboarding-actions">
+                <button type="button" class="btn-onboarding-allow" id="btnOnboardingAllow">
+                  Allow
+                </button>
+                <button type="button" class="btn-onboarding-skip" id="btnOnboardingSkip">
+                  Maybe later
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================================
+               VIEW 2: SCAN CAMERA VIEW (ScanView.swift + ScanCameraView.swift)
+               ============================================================ -->
+          <section class="app-view" id="viewScan">
+            <div class="scan-container">
+              <!-- ScanHeaderView + EyeSelectorBar -->
+              <div class="scan-top-bar">
+                <h2 class="scan-eye-title" id="scanHeaderTitle">Left Eye</h2>
+                <div class="eye-selector-bar">
+                  <button type="button" class="eye-tab selected" id="tabLeftEye">
+                    <span class="eye-tab-icon" id="iconTabLeft">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    </span>
+                    <span class="eye-tab-text">Left Eye</span>
+                  </button>
+                  <button type="button" class="eye-tab" id="tabRightEye">
+                    <span class="eye-tab-icon" id="iconTabRight">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    </span>
+                    <span class="eye-tab-text">Right Eye</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Camera Viewport (aspectRatio 6/7, cornerRadius 24) -->
+              <div class="camera-viewport" id="cameraViewport">
+                <video id="cameraVideo" autoplay playsinline muted></video>
+                <!-- Fallback / Live Retinal Preview Backdrop when camera is off -->
+                <div class="camera-fallback-backdrop" id="cameraFallbackBackdrop">
+                  <img id="cameraGhostSample" src="./samples/RET018OS.jpg" alt="Retinal Target Preview" />
+                  <div class="camera-fallback-overlay">
+                    <span>Camera Preview / Sample Ready</span>
+                  </div>
+                </div>
+
+                <!-- Dashed Target Circle (240x240) -->
+                <div class="target-dashed-circle"></div>
+
+                <!-- Focus Square View (FocusSquareView.swift) -->
+                <div class="focus-square hidden" id="focusSquare"></div>
+
+                <!-- ScanAlignmentHint -->
+                <div class="scan-alignment-hint">ALIGN EYE TO TARGET</div>
+              </div>
+
+              <!-- Camera Status View -->
+              <div class="camera-status-text" id="cameraStatusText">
+                Tap shutter, choose photo from gallery, or load clinical sample below.
+              </div>
+
+              <!-- CameraZoomControl (1x ... 4x) -->
+              <div class="camera-zoom-control">
+                <span class="zoom-label">1x</span>
+                <input type="range" id="zoomSlider" min="1" max="4" step="0.1" value="1" />
+                <span class="zoom-label">4x</span>
+              </div>
+
+              <!-- Bottom Shutter + Gallery + Sample Row -->
+              <div class="scan-bottom-controls">
+                <!-- Upload Photo from Device -->
+                <label class="scan-aux-btn" for="fileUploadInput" title="Upload from Photos">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                  <span>Photos</span>
+                  <input type="file" id="fileUploadInput" accept="image/*" class="hidden" />
+                </label>
+
+                <!-- 76x76 Shutter Button -->
+                <button type="button" class="shutter-button" id="btnCaptureShutter" aria-label="Capture photo">
+                  <span class="shutter-inner"></span>
+                </button>
+
+                <!-- Load Sample OD / OS Photo Button -->
+                <button type="button" class="scan-aux-btn scan-sample-btn" id="btnUseSampleEye" title="Use Sample Retinal Image">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  <span id="sampleBtnLabel">Sample OS</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================================
+               VIEW 3: PHOTO REVIEW VIEW (ImageReviewView.swift)
+               ============================================================ -->
+          <section class="app-view" id="viewReview">
+            <div class="review-container">
+              <!-- ReviewHeader -->
+              <div class="review-header">
+                <div class="review-nav-row">
+                  <button type="button" class="review-back-btn" id="btnReviewBack" aria-label="Back">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                  </button>
+                  <h2 class="review-title">Review</h2>
+                  <button type="button" class="review-crop-toggle" id="btnToggleCrop" title="Toggle Crop Guide">
+                    Crop
+                  </button>
+                </div>
+
+                <div class="review-eye-label">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                  </svg>
+                  <span id="reviewEyeTitle">Left eye</span>
+                </div>
+              </div>
+
+              <!-- ReviewImageCanvas (1:1 aspect ratio, pan & zoom) -->
+              <div class="review-canvas-wrap" id="reviewCanvasWrap">
+                <img id="reviewImageEl" src="" alt="Captured Eye Review" draggable="false" />
+
+                <div class="review-overlay-labels">
+                  <span class="review-tag-top" id="reviewSideTag">L / OS</span>
+                  <span class="review-tag-bottom">CAPTURED IMAGE</span>
+                </div>
+
+                <div class="crop-guide-box hidden" id="cropGuideBox"></div>
+              </div>
+
+              <!-- Zoom & Pan Helper Bar -->
+              <div class="review-zoom-bar">
+                <span>Zoom: <strong id="reviewZoomValue">1.0x</strong></span>
+                <div class="review-zoom-btns">
+                  <button type="button" id="btnReviewZoomOut">−</button>
+                  <button type="button" id="btnReviewResetZoom">Reset</button>
+                  <button type="button" id="btnReviewZoomIn">+</button>
+                </div>
+              </div>
+
+              <!-- ReviewGuidance -->
+              <p class="review-guidance" id="reviewGuidanceText">
+                Review the image before continuing to the other eye.
+              </p>
+
+              <!-- ReviewEditingActions -->
+              <div class="review-actions-row">
+                <button type="button" class="btn-review-retake" id="btnReviewRetake">
+                  Retake
+                </button>
+                <button type="button" class="btn-review-analyze" id="btnReviewAnalyze">
+                  <span class="spinner hidden" id="analyzeSpinner"></span>
+                  <span id="btnAnalyzeText">Next</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================================
+               VIEW 4: REPORT OVERVIEW VIEW (ReportOverviewView.swift)
+               ============================================================ -->
+          <section class="app-view" id="viewReport">
+            <!-- Navigation Bar -->
+            <div class="ios-navbar">
+              <div class="ios-navbar-side"></div>
+              <div class="ios-navbar-title">Report</div>
+              <div class="ios-navbar-side right">
+                <button type="button" class="ios-nav-btn" id="btnReportDone">Done</button>
+              </div>
+            </div>
+
+            <div class="report-scroll-body">
+              <h1 class="report-main-title">Report Overview</h1>
+              <div class="report-captured-line" id="reportCapturedLine">Captured 29 Oct 2026, 2:55 PM</div>
+
+              <!-- ReportEyeScansSection -->
+              <div class="structure-scans-section">
+                <div class="structure-scans-header">
+                  <span>STRUCTURE SCANS</span>
+                  <span>Schematic · Vertical CDR</span>
+                </div>
+
+                <div class="eye-cards-grid">
+                  <!-- Left Eye Summary Card -->
+                  <div class="eye-summary-card" id="cardLeftEye" role="button" tabindex="0">
+                    <div class="eye-card-title">Left eye</div>
+                    <div class="segmentation-image-box">
+                      <canvas id="canvasCardLeft" width="512" height="512"></canvas>
+                    </div>
+                    <div class="eye-card-cdr-row">
+                      <span class="cdr-small-label">CDR</span>
+                      <span class="cdr-value-text" id="cdrValueLeft">0.56</span>
+                    </div>
+                    <div class="status-pill" id="statusPillLeft">
+                      <span class="status-dot"></span>
+                      <span class="status-label">Glaucoma Suspect</span>
+                    </div>
+                    <div class="view-details-link">
+                      <span>View details</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                    </div>
+                  </div>
+
+                  <!-- Right Eye Summary Card -->
+                  <div class="eye-summary-card" id="cardRightEye" role="button" tabindex="0">
+                    <div class="eye-card-title">Right eye</div>
+                    <div class="segmentation-image-box">
+                      <canvas id="canvasCardRight" width="512" height="512"></canvas>
+                    </div>
+                    <div class="eye-card-cdr-row">
+                      <span class="cdr-small-label">CDR</span>
+                      <span class="cdr-value-text" id="cdrValueRight">0.45</span>
+                    </div>
+                    <div class="status-pill" id="statusPillRight">
+                      <span class="status-dot"></span>
+                      <span class="status-label">Normal</span>
+                    </div>
+                    <div class="view-details-link">
+                      <span>View details</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Summary of Findings Card -->
+              <div class="report-white-card">
+                <div class="rec-eyebrow">CLINICAL FINDING SUMMARY</div>
+                <div class="rec-message" id="reportSummarySentence">
+                  The left eye has the higher CDR (0.56 vs 0.45). Prioritize it in the eye-care review.
+                </div>
+              </div>
+
+              <!-- RecommendationCard -->
+              <div class="report-white-card">
+                <div class="rec-eyebrow">RECOMMENDED NEXT STEP</div>
+                <div class="rec-title" id="reportRecTitle">Review left-eye result</div>
+                <div class="rec-message" id="reportRecMessage">
+                  Arrange an eye-care review. Compare both eyes with an eye specialist.
+                </div>
+              </div>
+
+              <!-- AIDisclaimerView -->
+              <div class="ai-disclaimer-view">
+                <svg class="disclaimer-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                <p>
+                  CDR compares the optic cup with the optic disc. Screening is not a diagnosis. CDR alone does not establish glaucoma. Measurements are generated by an AI model in a research prototype and have not been clinically validated.
+                </p>
+              </div>
+            </div>
+
+            <!-- SafeAreaInset Bottom Export Button -->
+            <div class="report-bottom-bar">
+              <button type="button" class="btn-export-primary" id="btnOpenExportSheet">
+                Export
+              </button>
+            </div>
+          </section>
+
+          <!-- ============================================================
+               VIEW 5: EYE DETAIL VIEW (EyeDetailView.swift)
+               ============================================================ -->
+          <section class="app-view" id="viewEyeDetail">
+            <div class="ios-navbar">
+              <div class="ios-navbar-side">
+                <button type="button" class="ios-nav-back" id="btnDetailBack">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                  <span>Report</span>
+                </button>
+              </div>
+              <div class="ios-navbar-title">Eye Details</div>
+              <div class="ios-navbar-side right"></div>
+            </div>
+
+            <div class="report-scroll-body">
+              <div class="report-captured-line" id="detailCapturedLine">Captured 29 Oct 2026, 2:55 PM</div>
+
+              <!-- Segmented Picker (Left eye | Right eye) -->
+              <div class="ios-segmented-picker">
+                <button type="button" class="seg-option active" id="segDetailLeft">Left eye</button>
+                <button type="button" class="seg-option" id="segDetailRight">Right eye</button>
+              </div>
+
+              <!-- Wide Segmentation Image View + Mode Switcher (AI Contour / Original / Schematic) -->
+              <div class="detail-image-card">
+                <div class="detail-canvas-container">
+                  <canvas id="canvasDetailEye" width="512" height="512"></canvas>
+                </div>
+                <div class="detail-overlay-toolbar">
+                  <button type="button" class="overlay-mode-btn active" data-mode="contour">AI Contour</button>
+                  <button type="button" class="overlay-mode-btn" data-mode="filled">Filled Mask</button>
+                  <button type="button" class="overlay-mode-btn" data-mode="original">Original</button>
+                  <button type="button" class="overlay-mode-btn" data-mode="schematic">Schematic</button>
+                </div>
+              </div>
+
+              <!-- Vertical CDR + Screening Assessment Tinted Card -->
+              <div class="detail-assessment-card" id="detailAssessmentCard">
+                <div class="detail-cdr-col">
+                  <span class="detail-meta-label">Vertical CDR</span>
+                  <span class="detail-cdr-giant" id="detailCdrValue">0.56</span>
+                </div>
+                <div class="detail-status-col">
+                  <span class="detail-meta-label">Screening assessment</span>
+                  <div class="status-pill" id="detailStatusPill">
+                    <span class="status-dot"></span>
+                    <span class="status-label">Glaucoma Suspect</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pixel & Morphometric Metrics Card (Helpful for Glaucoma Specialist) -->
+              <div class="report-white-card">
+                <div class="rec-eyebrow">AI SEGMENTATION METRICS (512×512)</div>
+                <div class="metrics-mini-grid">
+                  <div class="metric-box">
+                    <span class="metric-label">Optic Disc Area</span>
+                    <span class="metric-val" id="detailDiscPixels">8,107 px</span>
+                  </div>
+                  <div class="metric-box">
+                    <span class="metric-label">Optic Cup Area</span>
+                    <span class="metric-val" id="detailCupPixels">2,165 px</span>
+                  </div>
+                  <div class="metric-box">
+                    <span class="metric-label">Disc Vertical Span</span>
+                    <span class="metric-val" id="detailDiscHeight">118 px</span>
+                  </div>
+                  <div class="metric-box">
+                    <span class="metric-label">Cup Vertical Span</span>
+                    <span class="metric-val" id="detailCupHeight">66 px</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RecommendationCard -->
+              <div class="report-white-card">
+                <div class="rec-eyebrow">RECOMMENDED NEXT STEP</div>
+                <div class="rec-title" id="detailRecTitle">Arrange a comprehensive eye exam</div>
+                <div class="rec-message" id="detailRecMessage">
+                  An ophthalmologist can check eye pressure, the optic nerve, and visual fields. Suspect does not mean confirmed glaucoma.
+                </div>
+              </div>
+
+              <!-- AIDisclaimerView -->
+              <div class="ai-disclaimer-view">
+                <svg class="disclaimer-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                <p>
+                  CDR compares the optic cup with the optic disc. Screening is not a diagnosis. CDR alone does not establish glaucoma. Measurements are generated by an AI model in a research prototype and have not been clinically validated.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================================
+               MODAL SHEET: EXPORT JPGS SHEET (ExportJPGsSheet.swift)
+               ============================================================ -->
+          <div class="ios-sheet-backdrop hidden" id="exportSheetBackdrop">
+            <div class="ios-sheet">
+              <div class="export-sheet-header">
+                <h2>Export</h2>
+                <button type="button" class="sheet-close-btn" id="btnCloseExportSheet" aria-label="Close">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm4.3 13.3a1 1 0 0 1-1.4 1.4L12 13.4l-2.9 2.9a1 1 0 0 1-1.4-1.4l2.9-2.9-2.9-2.9a1 1 0 0 1 1.4-1.4l2.9 2.9 2.9-2.9a1 1 0 0 1 1.4 1.4L13.4 12l2.9 2.9z"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="report-captured-line" id="exportCapturedLine">Captured 29 Oct 2026, 2:55 PM</div>
+
+              <!-- Live Preview of SingleReportExportPage (ReportExportService.swift) -->
+              <div class="export-preview-box">
+                <canvas id="canvasExportOverview" width="1400" height="860"></canvas>
+              </div>
+
+              <!-- ExportJPGRow -->
+              <div class="export-item-row selected" id="exportRowOverview">
+                <canvas id="canvasExportThumb" width="112" height="112" class="export-thumb"></canvas>
+                <div class="export-item-info">
+                  <div class="export-item-title">Overview</div>
+                  <div class="export-item-detail">overview.jpg · Both eyes + CDR values</div>
+                </div>
+                <div class="export-item-check" id="exportCheckIcon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#1F66F5">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div class="export-sheet-spacer"></div>
+
+              <p class="export-disclaimer-note">
+                The screening label, capture date, and AI disclaimer appear on all exported report images.
+              </p>
+
+              <button type="button" class="btn-export-primary" id="btnDownloadExportJpg">
+                Save 1 image to Photos (Download JPG)
+              </button>
+            </div>
+          </div>
+
+          <!-- ============================================================
+               iOS SYSTEM ALERT MODAL (Onboarding NFC Alert / Error Alert)
+               ============================================================ -->
+          <div class="ios-alert-backdrop hidden" id="iosAlertBackdrop">
+            <div class="ios-alert-box">
+              <div class="ios-alert-title" id="iosAlertTitle">Please attach frame</div>
+              <div class="ios-alert-message" id="iosAlertMessage">
+                Attach the NTAG213 frame to the back of your iPhone, then tap Allow again.
+              </div>
+              <button type="button" class="ios-alert-btn" id="btnIosAlertOk">OK</button>
+            </div>
+          </div>
+
+          <!-- iOS Home Indicator -->
+          <div class="ios-home-indicator">
+            <span></span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
