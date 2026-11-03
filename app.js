@@ -719,7 +719,9 @@ function updateReviewUI() {
 function applyReviewTransform() {
   const img = document.getElementById("reviewImageEl");
   img.style.transform = `translate(${state.reviewOffsetX}px, ${state.reviewOffsetY}px) scale(${state.reviewZoom})`;
-  document.getElementById("reviewZoomValue").textContent = `${state.reviewZoom.toFixed(1)}x`;
+  const capturedZoom = state.capturedZoom || 1;
+  const displayZoom = capturedZoom * state.reviewZoom;
+    document.getElementById("reviewZoomValue").textContent = `${displayZoom.toFixed(1)}x`;
   document.getElementById("cropGuideBox").classList.toggle("hidden", !state.cropMode);
 }
 
@@ -893,9 +895,10 @@ function loadImageElement(src) {
   });
 }
 
-function openReviewWithImage(imgObj, sampleKey = null) {
+function openReviewWithImage(imgObj, sampleKey = null, capturedZoom = 1) {
   state.selectedImageObj = imgObj;
   state.selectedImageSampleKey = sampleKey;
+  state.capturedZoom = capturedZoom;
   state.reviewZoom = 1;
   state.reviewOffsetX = 0;
   state.reviewOffsetY = 0;
@@ -1079,11 +1082,13 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnUseSampleEye").addEventListener("click", handleLoadSampleForCurrentEye);
 
   // Scan View: Shutter Button (captures live video if active, otherwise captures sample preview)
-  document.getElementById("btnCaptureShutter").addEventListener("click", async () => {
+    document.getElementById("btnCaptureShutter").addEventListener("click", async () => {
     const video = document.getElementById("cameraVideo");
-    if (state.cameraStream && video.videoWidth > 0) {
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
+    if (state.cameraStream) {
+      const track = state.cameraStream.getVideoTracks()[0];
+      const settings = track && track.getSettings ? track.getSettings() : {};
+      const vw = video.videoWidth || settings.width || 640;
+      const vh = video.videoHeight || settings.height || 640;
       const sliderVal = parseFloat(document.getElementById("zoomSlider").value);
       const zoom = Math.max(1, sliderVal || state.cameraZoom || 1);
 
@@ -1100,7 +1105,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       ctx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, outSize, outSize);
       const img = await loadImageElement(c.toDataURL("image/jpeg", 0.95));
-      openReviewWithImage(img, null);
+      openReviewWithImage(img, null, zoom);
     } else {
       await handleLoadSampleForCurrentEye();
     }
