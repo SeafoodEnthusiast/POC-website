@@ -835,12 +835,13 @@ async function startCameraIfPossible() {
   const video = document.getElementById("cameraVideo");
   const fallback = document.getElementById("cameraFallbackBackdrop");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    fallback.classList.remove("hidden");
-    return;
+      return;
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    let stream;
+    try {
+    stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
         width: { ideal: 1080 },
@@ -848,12 +849,16 @@ async function startCameraIfPossible() {
       },
       audio: false,
     });
+    } catch {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+    }
+    
     state.cameraStream = stream;
     video.srcObject = stream;
     video.style.transform = `scale(${state.cameraZoom || 1})`;
-
-    
-    fallback.classList.add("hidden");
 
     video.onloadedmetadata = async () => {
       try { await video.play(); } catch {}
@@ -1089,12 +1094,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const outSize = 1024;
       const c = document.createElement("canvas");
-      c.width = vw;
-      c.height = vh;
+      c.width = outSize;
+      c.height = outSize;
       const ctx = c.getContext("2d");
 
-      ctx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, vw, vh);
-      const img = await loadimageElement(c.toDataURL("image/jpeg", 0.95));
+      ctx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, outSize, outSize);
+      const img = await loadImageElement(c.toDataURL("image/jpeg", 0.95));
       openReviewWithImage(img, null);
     } else {
       await handleLoadSampleForCurrentEye();
