@@ -833,7 +833,7 @@ async function setCameraTorch(enabled) {
 
 async function startCameraIfPossible() {
   const video = document.getElementById("cameraVideo");
-  const fallback = document.getElementById("cameraFallback");
+  const fallback = document.getElementById("cameraFallbackBackdrop");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     fallback.classList.remove("hidden");
     return;
@@ -842,23 +842,30 @@ async function startCameraIfPossible() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: {ideal: "environment"},
-        width: {ideal: 1080},
-        height: {ideal: 1080},
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1080 },
+        height: { ideal: 1080 },
       },
       audio: false,
     });
     state.cameraStream = stream;
     video.srcObject = stream;
+    video.style.transform = `scale(${state.cameraZoom || 1})`;
+
     
     fallback.classList.add("hidden");
 
-    video.onloadedmetadata = () => {
-      setcameraTorch(true);
+    video.onloadedmetadata = async () => {
+      try { await video.play(); } catch {}
+      setCameraTorch(true);
+      setTimeout(() => setCameraTorch(true), 350);
+      setTimeout(() => setCameraTorch(true), 800);
     };
+
+    try { await video.play(); } catch {}
     setCameraTorch(true);
-  }
-  catch{
+    setTimeout(() => setCameraTorch(true), 350);
+  } catch {
     fallback.classList.remove("hidden");
   }
 }
@@ -1072,19 +1079,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state.cameraStream && video.videoWidth > 0) {
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-      const zoom = Math.max(1, state.cameraZoom || 1);
+      const sliderVal = parseFloat(document.getElementById("zoomSlider").value);
+      const zoom = Math.max(1, sliderVal || state.cameraZoom || 1);
 
-      const cropW = vw / zoom;
-      const cropH = vh / zoom;
-      const sx = (vw - cropW) / 2;
-      const sy = (vh - cropH) / 2;
+      const baseSide = Math.min(vw, vh);
+      const cropSide = baseSide / zoom;
+      const sx = (vw - cropSide) / 2;
+      const sy = (vh - cropSide) / 2;
 
+      const outSize = 1024;
       const c = document.createElement("canvas");
       c.width = vw;
       c.height = vh;
       const ctx = c.getContext("2d");
 
-      ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, vw, vh);
+      ctx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, vw, vh);
       const img = await loadimageElement(c.toDataURL("image/jpeg", 0.95));
       openReviewWithImage(img, null);
     } else {
