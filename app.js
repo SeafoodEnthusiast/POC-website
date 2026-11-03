@@ -820,10 +820,20 @@ function updateDetailUI() {
 // ============================================================
 // CAMERA & IMAGE HELPERS
 // ============================================================
+async function setCameraTorch(enabled) {
+  if (!state.cameraStream) return;
+  const track = state.cameraStream.getVideoTracks()[0];
+  if (!track || typeof track.applyConstraints !== "function") return;
+  try {
+    await track.applyConstraints({ advanced: [{ torch: enabled }] });
+  } catch (err) {
+    console.warn("Could not set camera torch:", err);
+  }
+}
+
 async function startCameraIfPossible() {
   const video = document.getElementById("cameraVideo");
-  const fallback = document.getElementById("cameraFallbackBackdrop");
-
+  const fallback = document.getElementById("cameraFallback");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     fallback.classList.remove("hidden");
     return;
@@ -831,20 +841,31 @@ async function startCameraIfPossible() {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" }, width: { ideal: 1080 }, height: { ideal: 1080 } },
+      video: {
+        facingMode: {ideal: "environment"},
+        width: {ideal: 1080},
+        height: {ideal: 1080},
+      },
       audio: false,
     });
     state.cameraStream = stream;
     video.srcObject = stream;
+    
     fallback.classList.add("hidden");
-  } catch {
-    // Camera unavailable or denied on desktop: show sample target preview gracefully
+
+    video.onloadedmetadata = () => {
+      setcameraTorch(true);
+    };
+    setCameraTorch(true);
+  }
+  catch{
     fallback.classList.remove("hidden");
   }
 }
 
 function stopCamera() {
   if (state.cameraStream) {
+    setCameraTorch(false);
     state.cameraStream.getTracks().forEach((t) => t.stop());
     state.cameraStream = null;
   }
@@ -1049,11 +1070,22 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnCaptureShutter").addEventListener("click", async () => {
     const video = document.getElementById("cameraVideo");
     if (state.cameraStream && video.videoWidth > 0) {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const zoom = Math.max(1, state.cameraZoom || 1);
+
+      const cropW = vw / zoom;
+      const cropH = vh / zoom;
+      const sx = (vw - cropW) / 2;
+      const sy = (vh - cropH) / 2;
+
       const c = document.createElement("canvas");
-      c.width = video.videoWidth;
-      c.height = video.videoHeight;
-      c.getContext("2d").drawImage(video, 0, 0);
-      const img = await loadImageElement(c.toDataURL("image/jpeg", 0.95));
+      c.width = vw;
+      c.height = vh;
+      const ctx = c.getContext("2d");
+
+      ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, vw, vh);
+      const img = await loadimageElement(c.toDataURL("image/jpeg", 0.95));
       openReviewWithImage(img, null);
     } else {
       await handleLoadSampleForCurrentEye();
